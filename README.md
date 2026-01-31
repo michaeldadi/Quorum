@@ -1,7 +1,7 @@
 # quorum
 
-[![CI](https://github.com/YOUR_USERNAME/quorum/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/quorum/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/YOUR_USERNAME/quorum)](https://goreportcard.com/report/github.com/YOUR_USERNAME/quorum)
+[![CI](https://github.com/michaeldadi/quorum/actions/workflows/ci.yml/badge.svg)](https://github.com/michaeldadi/quorum/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/michaeldadi/quorum)](https://goreportcard.com/report/github.com/michaeldadi/quorum)
 
 Distributed key-value store with Raft consensus implemented from scratch in Go.
 
