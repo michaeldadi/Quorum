@@ -194,3 +194,11 @@ func (s *Store) submit(cmd Command) error {
 
 	return nil
 }
+
+func (s *Store) GetLeader() string {
+	return s.node.GetLeader()
+}
+
+func (s *Store) IsLeader() bool {
+	return s.node.IsLeader()
+}

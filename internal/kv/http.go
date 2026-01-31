@@ -3,26 +3,43 @@ package kv
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"quorum/pkg/logger"
 	"time"
 )
 
 type HTTPServer struct {
-	store *Store
+	store    *Store
+	nodeID   string
+	httpAddr string            // this node's HTTP address
+	peerHTTP map[string]string // nodeID -> HTTP address
 }
 
-func NewHTTPServer(store *Store, addr string) *HTTPServer {
-	s := &HTTPServer{store: store}
+type HTTPConfig struct {
+	Store    *Store
+	NodeID   string
+	Addr     string
+	PeerHTTP map[string]string
+}
+
+func NewHTTPServer(cfg HTTPConfig) *HTTPServer {
+	s := &HTTPServer{
+		store:    cfg.Store,
+		nodeID:   cfg.NodeID,
+		httpAddr: cfg.Addr,
+		peerHTTP: cfg.PeerHTTP,
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/get", s.handleGet)
 	mux.HandleFunc("/put", s.handlePut)
 	mux.HandleFunc("/delete", s.handleDelete)
 	mux.HandleFunc("/health", s.handleHealth)
+	mux.HandleFunc("/status", s.handleStatus)
 
 	srv := &http.Server{
-		Addr:         addr,
+		Addr:         cfg.Addr,
 		Handler:      mux,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
@@ -30,7 +47,7 @@ func NewHTTPServer(store *Store, addr string) *HTTPServer {
 	}
 
 	go func() {
-		logger.Info("HTTP server listening", "addr", addr)
+		logger.Info("HTTP server listening", "addr", cfg.Addr)
 		if err := srv.ListenAndServe(); err != nil {
 			logger.Error("HTTP server error", "err", err)
 		}
@@ -40,9 +57,11 @@ func NewHTTPServer(store *Store, addr string) *HTTPServer {
 }
 
 type Response struct {
-	Ok    bool   `json:"ok"`
-	Value string `json:"value,omitempty"`
-	Error string `json:"error,omitempty"`
+	Ok       bool   `json:"ok"`
+	Value    string `json:"value,omitempty"`
+	Error    string `json:"error,omitempty"`
+	Leader   string `json:"leader,omitempty"`
+	Redirect string `json:"redirect,omitempty"`
 }
 
 func (s *HTTPServer) handleGet(w http.ResponseWriter, r *http.Request) {
@@ -52,6 +71,7 @@ func (s *HTTPServer) handleGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// For linearizable reads, we'll update this later
 	value, ok := s.store.Get(key)
 	if !ok {
 		s.jsonResponse(w, http.StatusNotFound, Response{Error: "key not found"})
@@ -84,7 +104,7 @@ func (s *HTTPServer) handlePut(w http.ResponseWriter, r *http.Request) {
 
 	err := s.store.Put(req.Key, req.Value)
 	if err == ErrNotLeader {
-		s.jsonResponse(w, http.StatusServiceUnavailable, Response{Error: "not leader"})
+		s.redirectToLeader(w, r)
 		return
 	}
 	if err != nil {
@@ -109,7 +129,7 @@ func (s *HTTPServer) handleDelete(w http.ResponseWriter, r *http.Request) {
 
 	err := s.store.Delete(key)
 	if err == ErrNotLeader {
-		s.jsonResponse(w, http.StatusServiceUnavailable, Response{Error: "not leader"})
+		s.redirectToLeader(w, r)
 		return
 	}
 	if err != nil {
@@ -122,6 +142,59 @@ func (s *HTTPServer) handleDelete(w http.ResponseWriter, r *http.Request) {
 
 func (s *HTTPServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	s.jsonResponse(w, http.StatusOK, Response{Ok: true})
+}
+
+func (s *HTTPServer) handleStatus(w http.ResponseWriter, r *http.Request) {
+	leader := s.store.GetLeader()
+	isLeader := s.store.IsLeader()
+
+	w.Header().Set("Content-Type", "application/json")
+	err := json.NewEncoder(w).Encode(map[string]interface{}{
+		"nodeId":   s.nodeID,
+		"isLeader": isLeader,
+		"leader":   leader,
+	})
+	if err != nil {
+		return
+	}
+}
+
+func (s *HTTPServer) redirectToLeader(w http.ResponseWriter, r *http.Request) {
+	leader := s.store.GetLeader()
+	if leader == "" || leader == s.nodeID {
+		s.jsonResponse(w, http.StatusServiceUnavailable, Response{
+			Error: "no leader elected",
+		})
+		return
+	}
+
+	leaderHTTP, ok := s.peerHTTP[leader]
+	if !ok {
+		s.jsonResponse(w, http.StatusServiceUnavailable, Response{
+			Error:  "leader unknown",
+			Leader: leader,
+		})
+		return
+	}
+
+	redirectURL := fmt.Sprintf("https://%s%s", leaderHTTP, r.URL.Path)
+	if r.URL.RawQuery != "" {
+		redirectURL += "?" + r.URL.RawQuery
+	}
+
+	// Set headers BEFORE writing response
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Location", redirectURL)
+	w.WriteHeader(http.StatusTemporaryRedirect)
+
+	err := json.NewEncoder(w).Encode(Response{
+		Error:    "not leader",
+		Leader:   leader,
+		Redirect: redirectURL,
+	})
+	if err != nil {
+		return
+	}
 }
 
 func (s *HTTPServer) jsonResponse(w http.ResponseWriter, status int, resp Response) {

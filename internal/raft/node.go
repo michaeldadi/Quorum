@@ -32,6 +32,7 @@ type Node struct {
 	state       NodeState
 	commitIndex int
 	lastApplied int
+	leaderId    string
 
 	// Leader state
 	nextIndex  map[string]int
@@ -244,6 +245,18 @@ func (n *Node) applyLoop() {
 	}
 }
 
+func (n *Node) GetLeader() string {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.leaderId
+}
+
+func (n *Node) IsLeader() bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.state == Leader
+}
+
 func (n *Node) Submit(command interface{}) (index, term int, isLeader bool) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -272,6 +285,7 @@ func (n *Node) Submit(command interface{}) (index, term int, isLeader bool) {
 
 func (n *Node) becomeLeader() {
 	n.state = Leader
+	n.leaderId = n.id // <-- add this
 	logger.Info("became leader", "term", n.currentTerm)
 
 	lastLogIndex := n.lastIncludedIndex + len(n.log)
@@ -288,6 +302,7 @@ func (n *Node) becomeFollower(term int) {
 	n.state = Follower
 	n.currentTerm = term
 	n.votedFor = ""
+	// Don't clear leaderId - we'll set it when we hear from the leader
 	n.persist()
 	logger.Info("became follower", "term", n.currentTerm)
 }

@@ -23,16 +23,22 @@ func main() {
 
 	logger.Init(*nodeID)
 
-	allNodes := map[string]int{
-		"node-1": 9001,
-		"node-2": 9002,
-		"node-3": 9003,
+	// Cluster config
+	allNodes := map[string]struct {
+		rpc  int
+		http int
+	}{
+		"node-1": {9001, 8001},
+		"node-2": {9002, 8002},
+		"node-3": {9003, 8003},
 	}
 
 	var peers []string
-	for id, p := range allNodes {
+	peerHTTP := make(map[string]string)
+	for id, ports := range allNodes {
+		peerHTTP[id] = fmt.Sprintf("localhost:%d", ports.http)
 		if id != *nodeID {
-			peers = append(peers, fmt.Sprintf("localhost:%d", p))
+			peers = append(peers, fmt.Sprintf("localhost:%d", ports.rpc))
 		}
 	}
 
@@ -57,13 +63,18 @@ func main() {
 
 	store := kv.NewStore(node, applyCh)
 
-	kv.NewHTTPServer(store, fmt.Sprintf(":%d", *httpPort))
+	kv.NewHTTPServer(kv.HTTPConfig{
+		Store:    store,
+		NodeID:   *nodeID,
+		Addr:     fmt.Sprintf(":%d", *httpPort),
+		PeerHTTP: peerHTTP,
+	})
 
 	go func() {
 		for {
 			time.Sleep(5 * time.Second)
 			term, state := node.GetState()
-			logger.Info("status", "term", term, "state", state)
+			logger.Info("status", "term", term, "state", state, "leader", node.GetLeader())
 		}
 	}()
 

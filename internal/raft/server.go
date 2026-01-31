@@ -96,6 +96,7 @@ func (s *RPCServer) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesR
 	}
 
 	s.node.ResetElectionTimer()
+	s.node.leaderId = args.LeaderId
 
 	if args.Term > s.node.currentTerm {
 		s.node.becomeFollower(args.Term)
