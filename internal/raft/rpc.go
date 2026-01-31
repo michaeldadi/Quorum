@@ -41,3 +41,17 @@ type InstallSnapshotArgs struct {
 type InstallSnapshotReply struct {
 	Term int
 }
+
+// ConfigChangeType Membership change types
+type ConfigChangeType int
+
+const (
+	AddNode ConfigChangeType = iota
+	RemoveNode
+)
+
+type ConfigChange struct {
+	Type   ConfigChangeType `json:"type"`
+	NodeID string           `json:"nodeId"`
+	Addr   string           `json:"addr,omitempty"` // RPC address for AddNode
+}

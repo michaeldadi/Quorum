@@ -1,0 +1,9 @@
+data/
+bin/
+coverage.out
+coverage.html
+*.exe
+.git
+.github
+.idea
+.vscode

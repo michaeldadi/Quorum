@@ -20,6 +20,9 @@ type PersistedState struct {
 	// Snapshot metadata
 	LastIncludedIndex int `json:"lastIncludedIndex"`
 	LastIncludedTerm  int `json:"lastIncludedTerm"`
+
+	// Cluster membership
+	Peers []string `json:"peers"`
 }
 
 func NewPersister(dataDir string) (*Persister, error) {
@@ -37,7 +40,7 @@ func (p *Persister) snapshotPath() string {
 	return filepath.Join(p.dir, "snapshot.bin")
 }
 
-func (p *Persister) Save(state PersistedState) error {
+func (p *Persister) Save(state *PersistedState) error {
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		return err
@@ -55,7 +58,8 @@ func (p *Persister) Save(state PersistedState) error {
 	logger.Debug("persisted state",
 		"term", state.CurrentTerm,
 		"logLen", len(state.Log),
-		"snapshotIndex", state.LastIncludedIndex)
+		"snapshotIndex", state.LastIncludedIndex,
+		"peers", len(state.Peers))
 	return nil
 }
 
@@ -76,7 +80,8 @@ func (p *Persister) Load() (PersistedState, error) {
 	logger.Info("loaded persisted state",
 		"term", state.CurrentTerm,
 		"logLen", len(state.Log),
-		"snapshotIndex", state.LastIncludedIndex)
+		"snapshotIndex", state.LastIncludedIndex,
+		"peers", len(state.Peers))
 	return state, nil
 }
 

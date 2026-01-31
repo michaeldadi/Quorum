@@ -1,0 +1,83 @@
+version: "3.8"
+
+services:
+  node1:
+    build: .
+    container_name: quorum-node1
+    hostname: node1
+    command:
+      - "--id=node-1"
+      - "--port=9001"
+      - "--http=8001"
+      - "--data=/data"
+      - "--peers=node2:9001,node3:9001"
+      - "--peer-http=node-1=node1:8001,node-2=node2:8001,node-3=node3:8001"
+    ports:
+      - "8001:8001"
+      - "9001:9001"
+    volumes:
+      - node1-data:/data
+    networks:
+      - quorum-net
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "--spider", "http://localhost:8001/health" ]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  node2:
+    build: .
+    container_name: quorum-node2
+    hostname: node2
+    command:
+      - "--id=node-2"
+      - "--port=9001"
+      - "--http=8001"
+      - "--data=/data"
+      - "--peers=node1:9001,node3:9001"
+      - "--peer-http=node-1=node1:8001,node-2=node2:8001,node-3=node3:8001"
+    ports:
+      - "8002:8001"
+      - "9002:9001"
+    volumes:
+      - node2-data:/data
+    networks:
+      - quorum-net
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "--spider", "http://localhost:8001/health" ]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  node3:
+    build: .
+    container_name: quorum-node3
+    hostname: node3
+    command:
+      - "--id=node-3"
+      - "--port=9001"
+      - "--http=8001"
+      - "--data=/data"
+      - "--peers=node1:9001,node2:9001"
+      - "--peer-http=node-1=node1:8001,node-2=node2:8001,node-3=node3:8001"
+    ports:
+      - "8003:8001"
+      - "9003:9001"
+    volumes:
+      - node3-data:/data
+    networks:
+      - quorum-net
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "--spider", "http://localhost:8001/health" ]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  node1-data:
+  node2-data:
+  node3-data:
+
+networks:
+  quorum-net:
+    driver: bridge

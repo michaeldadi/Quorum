@@ -10,6 +10,7 @@ import (
 	"quorum/internal/kv"
 	"quorum/internal/raft"
 	"quorum/pkg/logger"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -19,30 +20,47 @@ func main() {
 	port := flag.Int("port", 9001, "RPC port")
 	httpPort := flag.Int("http", 8001, "HTTP port")
 	dataDir := flag.String("data", "./data", "data directory")
+	peersFlag := flag.String("peers", "", "comma-separated list of peer RPC addresses")
+	peerHTTPFlag := flag.String("peer-http", "", "comma-separated list of nodeId=httpAddr mappings")
 	flag.Parse()
 
 	logger.Init(*nodeID)
 
-	// Cluster config
-	allNodes := map[string]struct {
-		rpc  int
-		http int
-	}{
-		"node-1": {9001, 8001},
-		"node-2": {9002, 8002},
-		"node-3": {9003, 8003},
-	}
-
 	var peers []string
 	peerHTTP := make(map[string]string)
-	for id, ports := range allNodes {
-		peerHTTP[id] = fmt.Sprintf("localhost:%d", ports.http)
-		if id != *nodeID {
-			peers = append(peers, fmt.Sprintf("localhost:%d", ports.rpc))
+
+	if *peersFlag != "" {
+		// Use provided peers
+		peers = strings.Split(*peersFlag, ",")
+	} else {
+		// Default cluster config (for local development)
+		allNodes := map[string]struct {
+			rpc  int
+			http int
+		}{
+			"node-1": {9001, 8001},
+			"node-2": {9002, 8002},
+			"node-3": {9003, 8003},
+		}
+
+		for id, ports := range allNodes {
+			peerHTTP[id] = fmt.Sprintf("localhost:%d", ports.http)
+			if id != *nodeID {
+				peers = append(peers, fmt.Sprintf("localhost:%d", ports.rpc))
+			}
 		}
 	}
 
-	// Each node gets its own data directory
+	// Parse peer HTTP mappings
+	if *peerHTTPFlag != "" {
+		for _, mapping := range strings.Split(*peerHTTPFlag, ",") {
+			parts := strings.SplitN(mapping, "=", 2)
+			if len(parts) == 2 {
+				peerHTTP[parts[0]] = parts[1]
+			}
+		}
+	}
+
 	nodeDataDir := filepath.Join(*dataDir, *nodeID)
 	persister, err := raft.NewPersister(nodeDataDir)
 	if err != nil {
@@ -53,7 +71,7 @@ func main() {
 	applyCh := make(chan raft.ApplyMsg)
 	node := raft.NewNode(*nodeID, peers, applyCh, persister)
 
-	rpcServer, err := raft.NewRPCServer(node, *port)
+	_, err = raft.NewRPCServer(node, *port)
 	if err != nil {
 		logger.Error("failed to start RPC server", "err", err)
 		os.Exit(1)
@@ -65,6 +83,7 @@ func main() {
 
 	kv.NewHTTPServer(kv.HTTPConfig{
 		Store:    store,
+		Node:     node,
 		NodeID:   *nodeID,
 		Addr:     fmt.Sprintf(":%d", *httpPort),
 		PeerHTTP: peerHTTP,
@@ -74,7 +93,7 @@ func main() {
 		for {
 			time.Sleep(5 * time.Second)
 			term, state := node.GetState()
-			logger.Info("status", "term", term, "state", state, "leader", node.GetLeader())
+			logger.Info("status", "term", term, "state", state, "leader", node.GetLeader(), "peers", node.GetPeers())
 		}
 	}()
 
@@ -82,15 +101,13 @@ func main() {
 		"id", *nodeID,
 		"rpc", *port,
 		"http", *httpPort,
-		"data", nodeDataDir)
+		"data", nodeDataDir,
+		"peers", peers)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	<-sigCh
 
-	if err := rpcServer.Close(); err != nil {
-		logger.Error("failed to close RPC server", "err", err)
-	}
 	node.Stop()
 	logger.Info("shutdown complete")
 }
