@@ -3,17 +3,22 @@
 # https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
 #
 # Binaries for programs and plugins
+bin/
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
+quorum
 
 # Test binary, built with `go test -c`
 *.test
 
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
+
+# Build
+dist/
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
@@ -27,3 +32,8 @@ go.work.sum
 
 # IDE configurations
 .idea
+*.iml
+.vscode/
+
+# OS
+.DS_Store
